@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>第三方/電子支付撥款與結算業務 - 每日實戰 SOP</title>
+    <title>LINE Pay 結算與撥款業務 - 完整交接手冊與實戰 SOP</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "微軟正黑體", sans-serif;
@@ -19,28 +19,27 @@
             background: #fff;
             padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
         h1 {
             color: #111;
-            border-bottom: 3px solid #06C755;
+            border-bottom: 4px solid #06C755;
             padding-bottom: 10px;
-            font-size: 1.8em;
+            font-size: 2em;
+            text-align: center;
         }
         h2 {
-            color: #2c3e50;
-            margin-top: 35px;
-            border-left: 5px solid #06C755;
-            padding-left: 12px;
-            background: #fafafa;
-            padding-top: 5px;
-            padding-bottom: 5px;
-            font-size: 1.3em;
+            color: #fff;
+            background-color: #2c3e50;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-top: 40px;
+            font-size: 1.4em;
         }
         h3 {
             color: #27ae60;
             margin-top: 25px;
-            border-bottom: 1px dashed #ccc;
+            border-bottom: 2px dashed #ccc;
             padding-bottom: 5px;
             font-size: 1.1em;
             font-weight: bold;
@@ -49,6 +48,27 @@
         li { margin-bottom: 10px; }
         strong { color: #222; }
         
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 0.95em;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th { background-color: #f8f9fa; color: #2c3e50; font-weight: bold; }
+        
+        /* 視覺區塊 */
+        .summary-box {
+            background-color: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #2196f3;
+            margin-bottom: 25px;
+        }
         .action-box {
             background-color: #f8f9fa;
             border: 1px solid #e0e0e0;
@@ -64,6 +84,34 @@
             margin: 15px 0;
             font-size: 0.95em;
         }
+        .danger-box {
+            background-color: #ffebee;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 5px solid #f44336;
+            margin: 15px 0;
+        }
+        .review-card {
+            background-color: #e8f5e9;
+            padding: 25px;
+            border-radius: 12px;
+            border: 2px solid #06C755;
+            margin-top: 40px;
+        }
+        
+        /* 標籤 */
+        .tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: bold;
+            color: white;
+            margin-right: 5px;
+        }
+        .tag-high { background-color: #e74c3c; }
+        .tag-med { background-color: #f39c12; }
+        .tag-low { background-color: #2ecc71; }
         .code-text {
             background-color: #f1f2f6;
             padding: 2px 6px;
@@ -80,21 +128,100 @@
             color: #1b5e20;
             font-weight: bold;
         }
-        
+
         @media (max-width: 600px) {
             body { padding: 10px; }
             .container { padding: 15px; }
-            h1 { font-size: 1.5em; }
+            h1 { font-size: 1.6em; }
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>📝 結算與撥款業務 - 每日結算統計報表 SOP</h1>
+    <h1>📝 LINE Pay 結算與撥款業務手冊</h1>
+
+    <div class="summary-box">
+        <h3 style="margin-top: 0; color: #1565c0;">1. 會議摘要</h3>
+        <p>核心聚焦於 LINE Pay 第三方支付與電子支付的金流底層邏輯。從消費者「授權(Auth)」、商家「請款(Capture)」，到系統生成「撥款底稿(Settle)」並打包「結算(Aggregation)」，最終產出傳票完成撥款。重點釐清了日結、週結、月結遇上「假日」的系統排程差異（日結順延，週/月結假日照跑），以及針對不同商戶（如 7-11 統整請款、Uber 僅做資訊分潤、新光三越的 MID 邏輯）的特殊處理規則，為後續複雜的財務對帳打下堅實的觀念基礎。</p>
+    </div>
+
+    <h2>【第一部分：核心觀念與架構】</h2>
+
+    <h3>2. 完整工作流程 (Transaction Flow)</h3>
+    <ol>
+        <li><strong>授權 (Auth)</strong>：消費者刷卡，收單行發出通知。此階段僅「圈存」額度，尚未扣款。</li>
+        <li><strong>請款 (Capture)</strong>：交易確認成立，商家向系統請款。資料正式進入 LINE Pay 系統。</li>
+        <li><strong>撥款底稿 (Settle)</strong>：Capture 發生後約 1 秒內，系統瞬間逐筆生成應撥款的「原始資料」。</li>
+        <li><strong>結算 (Aggregation)</strong>：系統依據商家合約週期（日/週/月），將多筆 Settle 打包成「一整包」。</li>
+        <li><strong>傳票 (Voucher)</strong>：結算完成後，系統產出對應的財務撥款傳票金額。</li>
+        <li><strong>出款 (Payout)</strong>：財務端核對傳票與實際銀行金流無誤後，將資金撥付至商家帳戶。</li>
+    </ol>
+
+    <h3>3. 金句與雷區 (Tips & Red Zones)</h3>
+    <div class="danger-box">
+        <strong>💡 金句：</strong>「我們部門要做的核心，就是確保 Capture 資料都有到 Settle，Settle 有結算出正確傳票，最後傳票金額跟實際銀行出去的金流要一模一樣。」<br><br>
+        <strong>🚫 絕對不能犯的禁忌與雷區：</strong>
+        <ol>
+            <li><strong>搞錯假日的「結算」邏輯：</strong><br>
+                日結遇假日會順延；但是 <strong>「週結」跟「月結」不管是不是假日，系統都會硬生生結算下去！</strong><br>
+                👉 <strong>長假防禦機制：</strong>過年或長假前，務必先把系統會在假日自動結算的電子傳票，預先送交財務系統排程，否則連假回來第一天會撥款大當機。
+            </li>
+            <li><strong>忘記「撥款日必定是工作日」：</strong><br>
+                如果商戶是 W111（週一結算，週二撥款），但週二是國定假日，這筆錢<strong>絕對不會在週二出去</strong>，系統會自動順延到週三（下一個工作日）撥款。
+            </li>
+            <li><strong>搞混「代收代付」的法規限制：</strong><br>
+                不能幫純外送平台（如 Uber、FoodPanda）做全額代收代付。對 Uber 我們僅做「資訊串接與分潤抽成」，不碰本金；但如果是 Momo（買貨進來再賣出去），我們就可以完整代收代付。
+            </li>
+        </ol>
+    </div>
+
+    <h3>4. 我的待辦事項</h3>
+    <ul>
+        <li><span class="tag tag-high">高優先</span> 熟記並實際操作「每日結算統計報表 SOP (12 步驟)」。 </li>
+        <li><span class="tag tag-med">中等</span> 閱讀內部 LP 維基百科，查詢各類結算週期 (W110, A1 等) 歷史帳單。 </li>
+        <li><span class="tag tag-med">中等</span> 釐清日結、週結模板中，對應特定商家 (如 7-11、Uber) 的 Manual Capture 特殊報表差異。 </li>
+    </ul>
+
+    <h3>5. 專有名詞小字典</h3>
+    <table>
+        <thead><tr><th>專有名詞</th><th>白話解釋</th></tr></thead>
+        <tbody>
+            <tr><td><strong>第三/電子支付差異</strong></td><td><strong>第三方支付</strong>：需串接收單行(玉山/台新等五大行)，錢從銀行來。<strong>電子支付(儲值金)</strong>：用戶直接儲值，沒有收單行那一段，直接扣款。</td></tr>
+            <tr><td><strong>Auto / Manual Capture</strong></td><td><strong>Auto</strong>：授權後立刻請款。<strong>Manual</strong>：非即時請款。例如：<strong>7-11</strong> 交易量太大一天包成一包請款；<strong>NET</strong> 每 4 小時請款一次；<strong>Uber</strong> 等餐點送達後才請款。</td></tr>
+            <tr><td><strong>MID (Merchant ID)</strong></td><td>商店代號。同集團（如新光三越）統編相同，但為區分不同電腦或櫃位，會擁有多個不同 MID，通常前綴號碼會一樣。</td></tr>
+            <tr><td><strong>日結 (A1, A2...)</strong></td><td>A1 = 次 1 日撥款；A2 = 次 2 日撥款。★ 日結<strong>僅在工作日</strong>進行結算。</td></tr>
+            <tr><td><strong>週結 (W110, W111...)</strong></td><td>W 代表週結，統一結算上週一到週日的帳。W110 = 週一當天撥款；W111 = 週二撥款。</td></tr>
+            <tr><td><strong>月結</strong></td><td>1 號到月底的帳，統一在次月 1 號結算（次月 2 號或 5 號撥款）。</td></tr>
+        </tbody>
+    </table>
+
+    <h3>6. 各步驟預估時間與難度</h3>
+    <ul>
+        <li>理解底層金流架構 (Auth/Capture/Settle)：<span class="tag tag-low">★ 簡單</span>（理解邏輯即可）</li>
+        <li>辨識特殊商戶請款與分潤邏輯 (Uber / Momo / 7-11)：<span class="tag tag-med">★★ 中等</span>（需記憶特例）</li>
+        <li>掌握結算週期與假日順延機制 (A1 / W110)：<span class="tag tag-high">★★★ 需要練習</span>（需拿著月曆推演連假狀況）</li>
+        <li>執行每日結算報表與抓帳 (下方 12 步驟)：<span class="tag tag-high">★★★ 需要練習</span>（Excel 步驟極多，需高度專注力）</li>
+    </ul>
+
+    <div class="review-card">
+        <h3 style="margin-top: 0; color: #1b5e20; border: none;">🚀 7. 一頁版快速複習卡 (濃縮精華)</h3>
+        <p><strong>🔹 核心對帳公式：</strong><br>
+        <span class="code-text">Capture (請款)</span> ＝ <span class="code-text">Settle (撥款底稿)</span> ＝ <span class="code-text">Aggregation (結算)</span> ＝ <span class="code-text">Voucher (傳票)</span> ＝ <span class="code-text">銀行實際出款</span></p>
+        
+        <p><strong>🔹 假日生存法則：</strong><br>
+        【結算日】：日結遇紅字順延；週/月結遇紅字<strong>照樣結算</strong>。<br>
+        【撥款日】：所有撥款<strong>永遠只在工作日發生</strong>，遇紅字一律往後順延！</p>
+        
+        <p><strong>🔹 誰給錢最快？</strong> 台新銀行 T+1 款；其他收單行 T+2 款。</p>
+    </div>
+
+    <hr style="border: 0; border-top: 2px dashed #eee; margin: 40px 0;">
+
+    <h2>【第二部分：每日結算統計報表 SOP (實戰操作)】</h2>
     <p>前情提要：假設今天為 <strong>02/27</strong>，要做今天的結算統計報表。操作分為「下載三份原始檔」與「整合至當天撥款報表模板」兩大階段。</p>
 
-    <h2>一、 下載三份來源檔案 (Raw Data)</h2>
+    <h3>一、 下載三份來源檔案 (Raw Data)</h3>
     <p>將以下三份從 LINE Pay 內部系統下載的 Excel 檔案置於同一個路徑中：</p>
     
     <div class="action-box">
@@ -130,17 +257,17 @@
         </ul>
     </div>
 
-    <h2>二、 整合至「當天的撥款報表」Excel</h2>
+    <h3>二、 整合至「當天的撥款報表」Excel</h3>
     <p>以下操作皆在既有的模板「當天的撥款報表」中執行（已內建完整分頁名稱、表頭與樞紐分析表 Pivot）。</p>
 
-    <h3>Step 1. 處理「逐筆撥款明細」 (排除後結手續費)</h3>
+    <h4>Step 1. 處理「逐筆撥款明細」 (排除後結手續費)</h4>
     <ol>
         <li>打開【檔案 3：逐筆撥款明細】檔案，把 <code>Sheet1</code> 全部的值貼到模板的分頁 <code>Settlement Statistics</code> 中（連表頭都一樣不變）。</li>
         <li>將 Column <code>Fee Charge Method</code> 篩選出值為 <span class="code-text">Payable</span>。</li>
         <li>接著把 <code>Service Fee</code> 跟 <code>VAT</code> 這兩個 Column 篩選出來的每個 rows 的金額<strong>都刪除</strong>（因為這算是手續費後結，不放進現在的資料表內）。</li>
     </ol>
 
-    <h3>Step 2. 處理「結算傳票」(篩選 AP 應付與整理格式)</h3>
+    <h4>Step 2. 處理「結算傳票」(篩選 AP 應付與整理格式)</h4>
     <ol>
         <li>打開【檔案 1：結算傳票】Excel 進行資料篩選：
             <ul>
@@ -154,13 +281,13 @@
         <li>將 Column 表頭 <code>Actual Deposit Amount</code> 的每個 rows 的值改為<strong>數字格式</strong>（貼過來時會是文字格式，每個欄位左上角會有綠色三角形，需轉換）。</li>
     </ol>
 
-    <h3>Step 3. 處理「退款準備金 (Refund Reserve)」</h3>
+    <h4>Step 3. 處理「退款準備金 (Refund Reserve)」</h4>
     <ol>
         <li>回到剛才【檔案 1：結算傳票】已經篩選好的狀態，更改表頭 <code>I/F Code</code> 欄位的篩選，改為只包含 <span class="code-text">Refund Reserve</span>（只選這個）。</li>
         <li>將篩選結果貼到模板分頁 <code>Refund Reserve</code>。</li>
     </ol>
 
-    <h3>Step 4. 排除 Refund Reserve 對當天總撥款的影響</h3>
+    <h4>Step 4. 排除 Refund Reserve 對當天總撥款的影響</h4>
     <ol>
         <li>分頁 <code>Finance IF (Admin JE)</code> 是當天整天要撥款的金額，因此必須將 Refund Reserve 剔除。</li>
         <li>將 <code>Refund Reserve</code> 分頁中的「商家名稱」，逐筆去對應 <code>Settlement Statistics</code> 檔案 Sheet1 中的「商家名稱」。（因每小時統計，商家篩選後可能有多筆）。</li>
@@ -171,7 +298,7 @@
         <li>如果總和數字確認一致，則**刪除 <code>Settlement Statistics</code> 對應的 rows**（刪除包含了 Refund Reserve、不應存在於當天要撥款金額的列）。</li>
     </ol>
 
-    <h3>Step 5. 建立 AP/AR 總表 (搬移欄位)</h3>
+    <h4>Step 5. 建立 AP/AR 總表 (搬移欄位)</h4>
     <ol>
         <li>繼續使用【檔案 1：結算傳票】（<strong>清除所有篩選</strong>）。</li>
         <li>將傳票檔案 Column A~M 每個 row 的數據貼到模板分頁 <code>APAR</code> 的 <strong>Column A~M</strong> 中。</li>
@@ -189,7 +316,7 @@
         <strong>⚠️ 待確認事項：</strong>確認模板 <code>APAR</code> 分頁中，這個「另外建立的 Column N」的正式表頭名稱是否就是 "AR"？
     </div>
 
-    <h3>Step 6. 驗證 Method 樞紐</h3>
+    <h4>Step 6. 驗證 Method 樞紐</h4>
     <ol>
         <li>包含 <code>method 1</code>、<code>method 2</code>、<code>method 3</code> 三個分頁。</li>
         <li>分別將該分頁中的樞紐統計表「重新整理」。</li>
@@ -197,14 +324,14 @@
         <li>進行結果比對，公式結果如果是 <strong>0（無差異）</strong>代表正確。</li>
     </ol>
 
-    <h3>Step 7. 匯入商家統計數據</h3>
+    <h4>Step 7. 匯入商家統計數據</h4>
     <ol>
         <li>打開【檔案 2：Merchant Statistics】，將 Sheet1 從 Column A~L 的所有 rows 複製，貼到模板分頁 <code>Mercant Settle Statistics</code> 的 <strong>Column A~L</strong>。</li>
         <li>將 Sheet1 從 Column M~O 複製，貼到模板的 <strong>Column N~P</strong>。</li>
         <li>因為模板的 Column M 增加了一個名為 <code>verfiy</code> 的欄位（自帶公式），貼上後必須將 Column M 每個 rows 都下拉套用到公式。</li>
     </ol>
 
-    <h3>Step 8. 核對餘額與點數 (BALANCE & LINE_POINT)</h3>
+    <h4>Step 8. 核對餘額與點數 (BALANCE & LINE_POINT)</h4>
     <ol>
         <li>打開模板分頁 <code>statistics_pivot</code>，做樞紐來源資料更新。</li>
         <li>找出樞紐標頭「標籤列」中，值為 <span class="code-text">BALANCE</span> 以及 <span class="code-text">LINE_POINT</span> 的每個 rows。</li>
@@ -217,14 +344,14 @@
         <li><strong>篩選出非 "0" 的情況</strong>（非 0 代表有問題，要找出原因）。</li>
     </ol>
 
-    <h3>Step 9. 核對信用卡 (CREDIT_CARD)</h3>
+    <h4>Step 9. 核對信用卡 (CREDIT_CARD)</h4>
     <ol>
         <li>回到分頁 <code>statistics_pivot</code> 更新樞紐。</li>
         <li>找出標籤列 <span class="code-text">CREDIT_CARD</span> 的明細，將對應的 Column A~F 貼到分頁 <code>statistics credit Verify</code> 的 Column A~F。</li>
         <li>將已存在的 Column G <code>verify</code> 公式下拉做檢核，篩選出非 "0" 的情況並查明原因。</li>
     </ol>
 
-    <h3>Step 10. PV All 與小數點四捨五入處理</h3>
+    <h4>Step 10. PV All 與小數點四捨五入處理</h4>
     <ol>
         <li>到分頁 <code>PV All</code> 更新總共兩個樞紐統計表的來源資料。</li>
         <li>將名為 <code>Finace I/F</code> 的樞紐結果複製，貼到分頁 <code>Rounding off</code> 的 <strong>Column Q</strong> 開始貼（覆蓋之前的表格）。</li>
@@ -247,12 +374,12 @@
         <strong>⚠️ 待確認事項：</strong>上述步驟「更新 當天的撥款報表 分頁 (未記錄) 的 column H」，該分頁的確切名稱是什麼？
     </div>
 
-    <h3>Step 11. 產出報告截圖</h3>
+    <h4>Step 11. 產出報告截圖</h4>
     <ul>
         <li>最後將統計出來的統計結果（有綠底色的）截圖，貼到模板分頁 <code>Report</code> 內，這也是最後要拿來做回報的結果。</li>
     </ul>
 
-    <h3>Step 12. 異常排錯機制 (抓帳)</h3>
+    <h4>Step 12. 異常排錯機制 (抓帳)</h4>
     <ul>
         <li>如果有對應不起來的情況，去抓 raw data 來比對。</li>
         <li><strong>路徑：</strong><code>Settlement > merchent settlement data > merchent settlement row data</code></li>
